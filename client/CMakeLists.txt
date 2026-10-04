@@ -240,3 +240,10 @@ if(COMMAND qt_finalize_executable)
 else()
     qt_finalize_target(${PROJECT})
 endif()
+
+if(LINUX)
+    # The prebuilt static OpenSSL must not leak its symbols into the dynamic
+    # symbol table: Qt's TLS backend (system libssl) would otherwise bind to
+    # these stale copies and crash in SSL_free (mixed OpenSSL instances).
+    target_link_options(${PROJECT} PRIVATE "LINKER:--exclude-libs,libssl.a:libcrypto.a")
+endif()

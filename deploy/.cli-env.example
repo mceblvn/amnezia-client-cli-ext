@@ -1,0 +1,24 @@
+# deploy/.cli-env — build secrets for the CLI fork.
+# Copy to deploy/.cli-env (same directory, without .example) and fill in.
+# The packaging script (deploy/build_cli_package.sh) refuses to build
+# Premium-capable binaries without these (fail-closed).
+#
+# NOTE: mirror endpoint URLs below are intentionally
+# LEFT EMPTY here. Extract them locally on the build machine with:
+#   strings -a <official-AmneziaVPN-binary> | grep -E "lambda-list|amazonaws\.com/amnezia"
+# and pick the directory bases (WITH trailing slash).
+
+# RSA-4096 gateway public keys (PEM, single line with literal \n, NO trailing
+# newline — sha512 of the exact bytes derives the proxy-payload AES key).
+# Sources: amnezia-client-lite/macos-signed-build.sh (PROD_*/DEV_* vars),
+# or extract from an official binary:
+#   strings -a <official-binary> | grep -A13 "BEGIN PUBLIC KEY"
+PROD_AGW_PUBLIC_KEY=""
+DEV_AGW_PUBLIC_KEY=""
+
+# Storage mirrors for the proxy-bypass path: comma+space separated directory
+# bases WITH trailing slash. Extract locally as described above.
+PROD_S3_ENDPOINT=""
+FALLBACK_S3_ENDPOINT=""
+DEV_AGW_ENDPOINT=""
+DEV_S3_ENDPOINT=""

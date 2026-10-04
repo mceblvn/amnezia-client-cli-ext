@@ -5,6 +5,10 @@ AmneziaVPN.dmg
 AmneziaVPN.exe
 AmneziaVPN_*.exe
 deploy/build/*
+deploy/.cli-env
+deploy/AppDir/
+*.run
+AmneziaVPN_Linux_Installer.bin
 deploy/build_32/*
 deploy/build_64/*
 winbuild*.bat

@@ -1,0 +1,132 @@
+#!/bin/bash
+# build_cli_package.sh — full offline installer for the 4.x + native CLI fork.
+#
+# Produces: AmneziaVPN_<version>+cli.N_linux_x64.run
+#
+# Secrets come ONLY from deploy/.cli-env (gitignored, never committed).
+# Copy deploy/.cli-env.example there and fill it in first.
+# The script fails CLOSED on empty keys: a keyless build must never ship.
+#
+# Requirements: cmake, ninja, g++, Qt 6.10+ (Core Gui Network Xml
+#   RemoteObjects Quick Svg QuickControls2 Core5Compat Concurrent Widgets),
+#   7z, patchelf, curl, python3. ~15 GB free (conan cache + build tree).
+#
+# Usage:
+#   deploy/build_cli_package.sh [--suffix +cli.1] [--skip-build] [--skip-tools-dl]
+
+set -o errexit -o nounset -o pipefail
+
+SUFFIX="+cli.1"
+SKIP_BUILD=0
+SKIP_TOOLS_DL=0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --suffix) SUFFIX="$2"; shift 2 ;;
+        --skip-build) SKIP_BUILD=1; shift ;;
+        --skip-tools-dl) SKIP_TOOLS_DL=1; shift ;;
+        *) echo "Unknown arg \"$1\""; exit 2 ;;
+    esac
+done
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BUILD_DIR="$PROJECT_DIR/deploy/build"
+PKG_DIR="$BUILD_DIR/cli-pkg"
+APPDIR="$PKG_DIR/AppDir"
+TOOLS_DIR="$PKG_DIR/Tools"
+PKGS_DIR="$PKG_DIR/pkgs"
+APP_DOMAIN="org.amneziavpn.package"
+
+CQT_VERSION="1.5.4.17"
+CQT_URL="https://github.com/QuasarApp/CQtDeployer/releases/download/v${CQT_VERSION}/CQtDeployer_${CQT_VERSION}_Linux_x86_64.zip"
+QIF_VERSION="4.8.1"
+QIF_URL="https://download.qt.io/official_releases/qt-installer-framework/${QIF_VERSION}/QtInstallerFramework-linux-x64-${QIF_VERSION}.run"
+QT_QMAKE="${QT_QMAKE:-/usr/lib/qt6/bin/qmake}"
+
+# --- 1. secrets (fail closed) -------------------------------------------
+CLI_ENV="$PROJECT_DIR/deploy/.cli-env"
+if [[ ! -f "$CLI_ENV" ]]; then
+    echo "FATAL: $CLI_ENV not found. Copy deploy/.cli-env.example there and fill it in." >&2
+    exit 1
+fi
+# shellcheck disable=SC1090
+source "$CLI_ENV"
+: "${PROD_AGW_PUBLIC_KEY:?PROD_AGW_PUBLIC_KEY is empty — refusing a keyless build}"
+: "${DEV_AGW_PUBLIC_KEY:?DEV_AGW_PUBLIC_KEY is empty}"
+: "${PROD_S3_ENDPOINT:?PROD_S3_ENDPOINT is empty}"
+: "${FALLBACK_S3_ENDPOINT:?FALLBACK_S3_ENDPOINT is empty}"
+export PROD_AGW_PUBLIC_KEY DEV_AGW_PUBLIC_KEY PROD_S3_ENDPOINT FALLBACK_S3_ENDPOINT
+export DEV_AGW_ENDPOINT DEV_S3_ENDPOINT
+export PATH="$HOME/.local/bin:$PATH"
+
+VERSION="$(grep -m1 'set(AMNEZIAVPN_VERSION' "$PROJECT_DIR/CMakeLists.txt" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || true)"
+VERSION="${VERSION:-4.8.21.0}"
+OUT="AmneziaVPN_${VERSION}${SUFFIX}_linux_x64.run"
+
+# --- 2. configure + build -----------------------------------------------
+if [[ "$SKIP_BUILD" -eq 0 ]]; then
+    cmake -S "$PROJECT_DIR" -B "$BUILD_DIR" -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release -DQT_DEPLOY_USE_PATCHELF=ON
+    cmake --build "$BUILD_DIR" --config Release --parallel "$(nproc)"
+fi
+
+CLIENT_BIN="$BUILD_DIR/client/AmneziaVPN"
+SERVICE_BIN="$BUILD_DIR/service/server/AmneziaVPN-service"
+[[ -x "$CLIENT_BIN" ]] || { echo "FATAL: client binary missing: $CLIENT_BIN" >&2; exit 1; }
+[[ -x "$SERVICE_BIN" ]] || { echo "FATAL: service binary missing: $SERVICE_BIN" >&2; exit 1; }
+
+# --- 3. verify baked secrets (fail closed) --------------------------------
+if [[ "$(strings -a "$CLIENT_BIN" | grep -c 'BEGIN PUBLIC KEY')" -lt 2 ]]; then
+    echo "FATAL: AGW keys missing from $CLIENT_BIN. Check .cli-env and reconfigure." >&2
+    exit 1
+fi
+if strings -a "$CLIENT_BIN" | grep -q "TEMP-DEBUG"; then
+    echo "FATAL: TEMP-DEBUG markers present in $CLIENT_BIN. Revert debug code first." >&2
+    exit 1
+fi
+if nm -D "$CLIENT_BIN" 2>/dev/null | grep -qE "SSL_CTX_free|OPENSSL_LH_free"; then
+    echo "FATAL: static OpenSSL symbols leak from $CLIENT_BIN (Qt TLS crash risk)." >&2
+    exit 1
+fi
+echo "Secrets check: OK (2 PEMs baked, no debug markers, no symbol leak)"
+
+# --- 4. tools -------------------------------------------------------------
+mkdir -p "$APPDIR" "$TOOLS_DIR" "$PKGS_DIR/$APP_DOMAIN/meta" "$PKGS_DIR/$APP_DOMAIN/data"
+if [[ "$SKIP_TOOLS_DL" -eq 0 ]]; then
+    if [[ ! -x "$TOOLS_DIR/cqtdeployer/cqtdeployer.sh" ]]; then
+        curl -sL -o "$TOOLS_DIR/CQtDeployer.zip" "$CQT_URL"
+        unzip -q -o "$TOOLS_DIR/CQtDeployer.zip" -d "$TOOLS_DIR/cqtdeployer"
+        chmod +x -R "$TOOLS_DIR/cqtdeployer"
+    fi
+    if [[ ! -x "$TOOLS_DIR/qtifw/bin/binarycreator" ]]; then
+        curl -sL -o "$TOOLS_DIR/qtifw.run" "$QIF_URL"
+        chmod +x "$TOOLS_DIR/qtifw.run"
+        "$TOOLS_DIR/qtifw.run" --accept-licenses --accept-messages \
+            --confirm-command install --root "$TOOLS_DIR/qtifw"
+    fi
+fi
+
+# --- 5. AppDir assembly ----------------------------------------------------
+cp -r "$PROJECT_DIR/deploy/data/linux/"* "$APPDIR/"
+cp -r "$PROJECT_DIR/client/3rd-prebuilt/deploy-prebuilt/linux/client/bin" "$APPDIR/client/"
+"$TOOLS_DIR/cqtdeployer/cqtdeployer.sh" -bin "$CLIENT_BIN" \
+    -qmake "$QT_QMAKE" -qmlDir "$PROJECT_DIR/client/ui/qml/" -targetDir "$APPDIR/client/"
+"$TOOLS_DIR/cqtdeployer/cqtdeployer.sh" -bin "$SERVICE_BIN" \
+    -qmake "$QT_QMAKE" -targetDir "$APPDIR/service/"
+
+# --- 6. IFW package --------------------------------------------------------
+# binarycreator resolves <ControlScript> relative to the config dir.
+cp "$PROJECT_DIR/deploy/installer/config/controlscript.js" "$BUILD_DIR/installer/config/"
+cp "$PROJECT_DIR/deploy/installer/packages/$APP_DOMAIN/meta/componentscript.js" \
+   "$BUILD_DIR/installer/packages/$APP_DOMAIN/meta/package.xml" \
+   "$PKGS_DIR/$APP_DOMAIN/meta/"
+rm -f "$PKGS_DIR/$APP_DOMAIN/data/data.7z"
+7z a "$PKGS_DIR/$APP_DOMAIN/data/data.7z" "$APPDIR/"* >/dev/null
+"$TOOLS_DIR/qtifw/bin/binarycreator" --offline-only \
+    -c "$BUILD_DIR/installer/config/linux.xml" \
+    -p "$PKGS_DIR" \
+    -f "$PKG_DIR/$OUT"
+
+echo
+echo "OK: $PKG_DIR/$OUT"
+ls -la "$PKG_DIR/$OUT"
+echo "Install with: sudo $PKG_DIR/$OUT  (closes over /opt/AmneziaVPN; config in ~/.config is kept)"

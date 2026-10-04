@@ -341,6 +341,12 @@ include_directories(
 
 add_executable(${PROJECT} ${SOURCES} ${HEADERS} ${RESOURCES})
 target_link_libraries(${PROJECT} PRIVATE Qt6::Core Qt6::Widgets Qt6::Network Qt6::RemoteObjects Qt6::Core5Compat Qt6::DBus Qt6::Concurrent ${LIBS})
+
+if(LINUX)
+    # Same as the client: hide prebuilt static OpenSSL symbols so Qt's TLS
+    # backend (system libssl) never binds to these stale copies.
+    target_link_options(${PROJECT} PRIVATE "LINKER:--exclude-libs,libssl.a:libcrypto.a")
+endif()
 target_compile_definitions(${PROJECT} PRIVATE "MZ_$<UPPER_CASE:${MZ_PLATFORM_NAME}>")
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
