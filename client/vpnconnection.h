@@ -5,6 +5,8 @@
 #include <QMetaObject>
 #include <QString>
 #include <QScopedPointer>
+#include <QJsonObject>
+#include <QDateTime>
 #include <QRemoteObjectNode>
 #include <QTimer>
 
@@ -33,8 +35,13 @@ public:
     static QString bytesPerSecToText(quint64 bytes);
 
     ErrorCode lastError() const;
+    Vpn::ConnectionState connectionState() const { return m_connectionState; }
 
     QSharedPointer<VpnProtocol> vpnProtocol() const;
+
+    // Thread-safe snapshot of the protocol-level status. Must be invoked
+    // in this object's thread (e.g. via BlockingQueuedConnection).
+    Q_INVOKABLE QJsonObject snapshotStatus() const;
 
     const QString &remoteAddress() const;
     void addSitesRoutes(const QString &gw, Settings::RouteMode mode);
@@ -84,6 +91,9 @@ private:
 #endif
 
    Vpn::ConnectionState m_connectionState;
+
+   QDateTime m_connectedSince;
+   int m_connectedServerIndex = -1;
 
    void createProtocolConnections();
 

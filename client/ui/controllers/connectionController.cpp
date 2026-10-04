@@ -79,6 +79,32 @@ void ConnectionController::closeConnection()
     emit disconnectFromVpn();
 }
 
+ErrorCode ConnectionController::connectExplicit()
+{
+    if (isConnected() || isConnectionInProgress()) {
+        return ErrorCode::NoError;
+    }
+
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS) && !defined(MACOS_NE)
+    if (!Utils::processIsRunning(Utils::executable(SERVICE_NAME, false), true))
+    {
+        emit connectionErrorOccurred(ErrorCode::AmneziaServiceNotRunning);
+        return ErrorCode::AmneziaServiceNotRunning;
+    }
+#endif
+
+    int serverIndex = m_serversModel->getDefaultServerIndex();
+    DockerContainer container = qvariant_cast<DockerContainer>(m_serversModel->data(serverIndex, ServersModel::Roles::DefaultContainerRole));
+
+    if (!m_containersModel->isSupportedByCurrentPlatform(container)) {
+        emit connectionErrorOccurred(ErrorCode::NotSupportedOnThisPlatform);
+        return ErrorCode::NotSupportedOnThisPlatform;
+    }
+
+    emit prepareConfig();
+    return ErrorCode::NoError;
+}
+
 ErrorCode ConnectionController::getLastConnectionError()
 {
     return m_vpnConnection->lastError();

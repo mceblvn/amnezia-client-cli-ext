@@ -48,11 +48,20 @@ int main(int argc, char *argv[])
     OsSignalHandler::setup();
 
 #if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS) && !defined(MACOS_NE)
-    if (isAnotherInstanceRunning()) {
+    const bool cliRequested = app.parseCli();
+    if (cliRequested) {
+        const int rc = app.execCliCommand(app.cliCommand());
+        if (rc >= 0) {
+            return rc;
+        }
+        // connect with no primary instance: fall through and become primary.
+        app.startLocalServer();
+    } else if (isAnotherInstanceRunning()) {
         QTimer::singleShot(1000, &app, [&]() { app.quit(); });
         return app.exec();
+    } else {
+        app.startLocalServer();
     }
-    app.startLocalServer();
 #endif
 
 // Allow to raise app window if secondary instance launched

@@ -228,6 +228,7 @@ void VpnConnection::connectToVpn(int serverIndex, const ServerCredentials &crede
              << m_settings->routeMode();
 
     m_remoteAddress = NetworkUtilities::getIPAddress(credentials.hostName);
+    m_connectedServerIndex = serverIndex;
     setConnectionState(Vpn::ConnectionState::Connecting);
 
     m_vpnConfiguration = vpnConfiguration;
@@ -486,6 +487,32 @@ void VpnConnection::setConnectionState(Vpn::ConnectionState state) {
     if (state == Vpn::Disconnected && m_connectionState == Vpn::Reconnecting)
         return;
 
+    if (state == Vpn::ConnectionState::Connected && m_connectionState != Vpn::ConnectionState::Connected) {
+        m_connectedSince = QDateTime::currentDateTime();
+    } else if (state == Vpn::ConnectionState::Disconnected || state == Vpn::ConnectionState::Error) {
+        m_connectedSince = QDateTime();
+        m_connectedServerIndex = -1;
+    }
+
     m_connectionState = state;
     emit connectionStateChanged(state);
+}
+
+QJsonObject VpnConnection::snapshotStatus() const
+{
+    QJsonObject snap;
+    snap.insert(QStringLiteral("connected"), m_connectionState == Vpn::ConnectionState::Connected);
+    snap.insert(QStringLiteral("connectionState"), static_cast<int>(m_connectionState));
+    snap.insert(QStringLiteral("serverIndex"), m_connectedServerIndex);
+    if (m_connectedSince.isValid()) {
+        snap.insert(QStringLiteral("since"), m_connectedSince.toString());
+    }
+    snap.insert(QStringLiteral("remoteAddress"), m_remoteAddress);
+    if (!m_vpnProtocol.isNull()) {
+        snap.insert(QStringLiteral("deviceIpv4Address"), m_vpnProtocol->vpnLocalAddress());
+        snap.insert(QStringLiteral("serverIpv4Gateway"), m_vpnProtocol->vpnGateway());
+        snap.insert(QStringLiteral("rxBytes"), static_cast<qint64>(m_vpnProtocol->totalReceivedBytes()));
+        snap.insert(QStringLiteral("txBytes"), static_cast<qint64>(m_vpnProtocol->totalSentBytes()));
+    }
+    return snap;
 }

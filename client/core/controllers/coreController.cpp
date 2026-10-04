@@ -2,6 +2,9 @@
 
 #include <QDirIterator>
 #include <QTranslator>
+#include <QTimer>
+
+#include "cli/statuscollector.h"
 
 #if defined(Q_OS_ANDROID)
     #include "core/installedAppsImageProvider.h"
@@ -408,6 +411,100 @@ void CoreController::openConnectionByIndex(int serverIndex)
         m_serversModel->setDefaultServerIndex(serverIndex);
     }
     m_connectionController->toggleConnection();
+}
+
+ErrorCode CoreController::cliConnect(int serverIndex)
+{
+    if (!m_connectionController || !m_serversModel) {
+        return ErrorCode::InternalError;
+    }
+    int targetIndex = m_serversModel->getDefaultServerIndex();
+    if (serverIndex >= 0) {
+        if (serverIndex < 0 || serverIndex >= m_serversModel->getServersCount()) {
+            return ErrorCode::InternalError;
+        }
+        targetIndex = serverIndex;
+        m_serversModel->setDefaultServerIndex(targetIndex);
+    }
+
+    bool connected = m_connectionController->isConnected();
+    int currentIndex = -1;
+    if (!m_vpnConnection.isNull()) {
+        QJsonObject snap;
+        QMetaObject::invokeMethod(m_vpnConnection.data(), "snapshotStatus", Qt::BlockingQueuedConnection,
+                                  Q_RETURN_ARG(QJsonObject, snap));
+        connected = snap.value(QStringLiteral("connected")).toBool(false);
+        currentIndex = snap.value(QStringLiteral("serverIndex")).toInt(-1);
+    }
+    if (connected && currentIndex == targetIndex) {
+        return ErrorCode::NoError;
+    }
+    if (m_connectionController->isConnectionInProgress()) {
+        return ErrorCode::NoError;
+    }
+    if (connected) {
+        // Switch to another server: drop the tunnel, continue on disconnect.
+        if (m_switchConnection) {
+            QObject::disconnect(m_switchConnection);
+        }
+        m_pendingSwitchTo = targetIndex;
+        m_switchConnection = QObject::connect(
+            m_connectionController.data(), &ConnectionController::connectionStateChanged, this,
+            [this]() {
+                if (!m_connectionController
+                    || m_connectionController->isConnected()
+                    || m_connectionController->isConnectionInProgress()
+                    || m_pendingSwitchTo < 0) {
+                    return;
+                }
+                m_pendingSwitchTo = -2;
+                if (m_switchConnection) {
+                    QObject::disconnect(m_switchConnection);
+                }
+                m_connectionController->connectExplicit();
+            });
+        m_connectionController->closeConnection();
+        return ErrorCode::NoError;
+    }
+    return m_connectionController->connectExplicit();
+}
+
+ErrorCode CoreController::cliDisconnect()
+{
+    if (m_switchConnection) {
+        QObject::disconnect(m_switchConnection);
+    }
+    m_pendingSwitchTo = -2;
+    if (!m_connectionController) {
+        return ErrorCode::InternalError;
+    }
+    if (!m_connectionController->isConnected() && !m_connectionController->isConnectionInProgress()) {
+        return ErrorCode::NoError;
+    }
+    m_connectionController->closeConnection();
+    return ErrorCode::NoError;
+}
+
+QJsonObject CoreController::cliStatusJson()
+{
+    if (!m_serversModel || !m_connectionController || m_vpnConnection.isNull()) {
+        QJsonObject data;
+        data.insert(QStringLiteral("connected"), false);
+        data.insert(QStringLiteral("connectionState"), QStringLiteral("Unknown"));
+        return data;
+    }
+    return amnezia::cli::collectStatus(m_serversModel.data(), m_connectionController.data(),
+                                       m_vpnConnection.data(), m_settings);
+}
+
+QJsonObject CoreController::cliServersJson()
+{
+    if (!m_serversModel || m_vpnConnection.isNull()) {
+        QJsonObject data;
+        data.insert(QStringLiteral("servers"), QJsonArray());
+        return data;
+    }
+    return amnezia::cli::collectServers(m_serversModel.data(), m_vpnConnection.data(), m_settings);
 }
 
 void CoreController::importConfigFromData(const QString &data)

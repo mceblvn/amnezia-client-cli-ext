@@ -64,10 +64,18 @@ public:
                             QQmlApplicationEngine *engine, QObject *parent = nullptr);
 
     QSharedPointer<PageController> pageController() const;
+    ConnectionController* connectionController() const { return m_connectionController.data(); }
     void setQmlRoot();
 
     void openConnectionByIndex(int serverIndex);
     void importConfigFromData(const QString &data);
+
+    // CLI/IPC entry points. All run in the GUI thread.
+    // cliConnect(-1) uses the default server.
+    ErrorCode cliConnect(int serverIndex = -1);
+    ErrorCode cliDisconnect();
+    QJsonObject cliStatusJson();
+    QJsonObject cliServersJson();
 
 signals:
     void translationsUpdated();
@@ -108,6 +116,8 @@ private:
     QMetaObject::Connection m_reloadConfigErrorOccurredConnection;
 
     QScopedPointer<ConnectionController> m_connectionController;
+    int m_pendingSwitchTo = -2;
+    QMetaObject::Connection m_switchConnection;
     QScopedPointer<FocusController> m_focusController;
     QSharedPointer<PageController> m_pageController; // TODO
     QScopedPointer<InstallController> m_installController;

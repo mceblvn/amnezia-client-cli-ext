@@ -35,6 +35,11 @@ WireguardProtocol::WireguardProtocol(const QJsonObject &configuration, QObject *
                     (!m_vpnLocalAddress.isEmpty() && m_vpnLocalAddress != previousLocal)) {
                     emit tunnelAddressesUpdated(m_vpnGateway, m_vpnLocalAddress);
                 }
+
+                // Daemon reports totals; setBytesChanged stores them and emits deltas.
+                if (txBytes > 0 || rxBytes > 0) {
+                    setBytesChanged(rxBytes, txBytes);
+                }
             });
 
     connect(m_impl.get(), &ControllerImpl::disconnected, this,

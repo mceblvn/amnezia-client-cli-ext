@@ -61,6 +61,9 @@ public:
     QString textConnectionState() const;
     void setLastError(ErrorCode lastError);
 
+    quint64 totalReceivedBytes() const { return m_receivedBytes; }
+    quint64 totalSentBytes() const { return m_sentBytes; }
+
     QString routeGateway() const;
     QString vpnGateway() const;
     QString vpnLocalAddress() const;

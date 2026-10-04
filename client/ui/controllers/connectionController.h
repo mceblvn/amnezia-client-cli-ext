@@ -33,6 +33,10 @@ public slots:
     void openConnection();
     void closeConnection();
 
+    // Explicit, idempotent connect for programmatic callers (CLI, IPC).
+    // Unlike toggleConnection() it never disconnects an active tunnel.
+    ErrorCode connectExplicit();
+
     ErrorCode getLastConnectionError();
     void onConnectionStateChanged(Vpn::ConnectionState state);
 
