@@ -424,6 +424,10 @@ ErrorCode CoreController::cliConnect(int serverIndex)
             return ErrorCode::InternalError;
         }
         targetIndex = serverIndex;
+        // Same as openConnectionByIndex: the containers model follows the
+        // PROCESSED server. Without this, validateConfig reads the previous
+        // server's containers (no last_config) and falls back to SSH (300).
+        m_serversModel->setProcessedServerIndex(targetIndex);
         m_serversModel->setDefaultServerIndex(targetIndex);
     }
 
