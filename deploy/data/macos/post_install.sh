@@ -54,7 +54,5 @@ run_cmd launchctl bootstrap system "$LAUNCH_DAEMONS_PLIST_NAME" || run_cmd launc
 run_cmd launchctl enable "system/$APP_NAME-service" || true
 run_cmd launchctl kickstart -k "system/$APP_NAME-service" || true
 run_cmd launchctl print "system/$APP_NAME-service" || true
-log "Launching ${APP_NAME} application"
-run_cmd open -a "$APP_PATH" || true
 
 log "Script finished"
