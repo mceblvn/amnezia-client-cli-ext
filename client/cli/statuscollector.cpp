@@ -123,7 +123,10 @@ QJsonObject collectStatus(ServersModel *serversModel,
             data.insert(QStringLiteral("deviceIpv4Address"), device);
         }
         QString gw = gateway;
-        if (gw.isEmpty()) {
+        // A gateway equal to the device address carries no routing info
+        // (XRay reports loopback constants for both) — use the remote
+        // server address instead.
+        if (gw.isEmpty() || (!device.isEmpty() && gw == device)) {
             gw = snap.value(QStringLiteral("remoteAddress")).toString();
         }
         if (!gw.isEmpty()) {

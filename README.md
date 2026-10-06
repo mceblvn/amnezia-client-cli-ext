@@ -87,6 +87,10 @@ them from an official binary with `strings`.
 ~/.config/AmneziaVPN.ORG/AmneziaVPN.conf  # config (installer keeps it)
 ```
 
+The wrapper also appends system Qt plugin dirs after the bundled one, so
+native KDE file dialogs find their KIO workers on any distro (Arch, Debian,
+Fedora layouts probed at launch). macOS/Windows packaging untouched.
+
 ## License
 
 GNU GPL v3.0, same as upstream (see LICENSE). This fork is not affiliated

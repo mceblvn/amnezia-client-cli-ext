@@ -118,6 +118,45 @@ cp "$PROJECT_DIR/deploy/AppDir/AmneziaVPN.desktop" "$APPDIR/" 2>/dev/null || \
 "$TOOLS_DIR/cqtdeployer/cqtdeployer.sh" -bin "$SERVICE_BIN" \
     -qmake "$QT_QMAKE" -targetDir "$APPDIR/service/"
 
+# System Qt plugin fallback (KF workers for native file dialogs).
+# The bundle carries its own Qt; KF6 integration plugins (kio workers used
+# by native KDE file dialogs) live in the SYSTEM Qt plugin dir, which
+# differs per distro (Arch /usr/lib/qt6, Debian
+# /usr/lib/x86_64-linux-gnu/qt6, Fedora /usr/lib64/qt6, NixOS .../store).
+# Probe at APP LAUNCH (not here): bundled dir keeps priority, system dirs
+# append after it, duplicates skipped, missing dirs ignored. This only
+# ever touches the linux .sh wrapper; mac .app and win .bat are unaffected.
+WRAPPER="$APPDIR/client/AmneziaVPN.sh"
+if ! grep -q "amnezia-cli-plugin-path" "$WRAPPER"; then
+    python3 - "$WRAPPER" <<'EOF'
+import sys
+path = sys.argv[1]
+block = '''# >>> amnezia-cli-plugin-path: system Qt plugin fallback >>>
+# See comment in deploy/build_cli_package.sh. Appends system Qt plugin dirs
+# (KF6 kio workers for native file dialogs) AFTER the bundled one.
+_amn_qmake_plug=""
+if command -v qmake >/dev/null 2>&1; then
+    _amn_qmake_plug="$(qmake -query QT_INSTALL_PLUGINS 2>/dev/null)"
+fi
+for _p in $_amn_qmake_plug /usr/lib/qt6/plugins /usr/lib/x86_64-linux-gnu/qt6/plugins /usr/lib64/qt6/plugins; do
+    [ -n "$_p" ] && [ -d "$_p" ] || continue
+    case ":$QT_PLUGIN_PATH:" in
+        *":$_p:"*) ;;
+        *) QT_PLUGIN_PATH="$QT_PLUGIN_PATH:$_p" ;;
+    esac
+done
+unset _amn_qmake_plug _p
+# <<< amnezia-cli-plugin-path <<<
+'''
+text = open(path).read()
+anchor = '"$BASE_DIR/bin/AmneziaVPN" "$@"'
+assert anchor in text, "wrapper exec line not found"
+text = text.replace(anchor, block + "\n" + anchor)
+open(path, "w").write(text)
+print("wrapper plugin-path fallback installed")
+EOF
+fi
+
 # --- 6. IFW package --------------------------------------------------------
 # binarycreator resolves <ControlScript> relative to the config dir.
 cp "$PROJECT_DIR/deploy/installer/config/controlscript.js" "$BUILD_DIR/installer/config/"
