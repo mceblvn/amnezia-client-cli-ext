@@ -25,6 +25,13 @@ done
 PROJECT_DIR=$(pwd)
 DEPLOY_DIR=$PROJECT_DIR/deploy
 
+# Same secrets file as the Linux packager (Premium gateway keys, etc.).
+# Sourced only if present; keyless build otherwise.
+if [ -f "$PROJECT_DIR/deploy/.cli-env" ]; then
+    # shellcheck disable=SC1091
+    source "$PROJECT_DIR/deploy/.cli-env"
+fi
+
 mkdir -p "$DEPLOY_DIR/build"
 BUILD_DIR="$DEPLOY_DIR/build"
 

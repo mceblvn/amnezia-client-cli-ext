@@ -1,7 +1,7 @@
 # AmneziaVPN CLI-ext (4.x)
 
 Fork of [amnezia-vpn/amnezia-client](https://github.com/amnezia-vpn/amnezia-client)
-with a **native CLI** baked into the same binary: `status`, `servers`,
+with a **native CLI** baked into the same GUI binary: `status`, `servers`,
 `connect`, `disconnect`, `watch` (+ `--json`, `--redact`). Built for
 scripted control (bars, widgets, automation)
 
@@ -27,6 +27,8 @@ scripted control (bars, widgets, automation)
 
 ## CLI contract
 
+Linux:
+
 ```bash
 AmneziaVPN status [--json] [--redact]      # connection status
 AmneziaVPN servers [--json]                # [{index,name,protocol,protoShort,default,current}]
@@ -35,9 +37,16 @@ AmneziaVPN disconnect [--json]             # idempotent no-op when already down
 AmneziaVPN watch [--json] [--redact]       # stream: one JSON object per line on every state change
 ```
 
+macOS:
+```bash
+/Applications/AmneziaVPN.app/Contents/MacOS/AmneziaVPN status
+/Applications/AmneziaVPN.app/Contents/MacOS/AmneziaVPN connect [index]
+... and so on
+```
+
 - Commands go to the running GUI instance over `QLocalSocket`
   (`AmneziaVPNInstance`) as line-delimited JSON; the CLI process exits
-  immediately with a code (0 ok / 1 failure / 2 usage).
+  immediately: 0 ok, 1 failure.
 - `connect`/`disconnect` replies mean *accepted*, not *connected*
   (connect is async; poll `status` or `watch` for the result).
 - `--redact` masks IPs (`1.2.3.4 → 1.2.*.*`) in `device`/`gateway`.
@@ -45,34 +54,51 @@ AmneziaVPN watch [--json] [--redact]       # stream: one JSON object per line on
 
 ## Building
 
-Linux-first (other desktop OSes should compile — same Qt APIs — but the
-CLI is only tested on Linux; Android/iOS/macOS-NE IPC paths are excluded
-by the same guards as upstream).
+Linux-first (macOS is also supported; other desktop OSes should compile — same Qt APIs).
+Tested only on Arch Linux and macOS 15 Apple Silicon (Rosetta).
 
 Requirements: CMake 3.25+, Ninja, GCC, Qt 6.10+ (Core Gui Network Xml
 RemoteObjects Quick Svg QuickControls2 Core5Compat Concurrent Widgets),
 7z, patchelf, curl, python3.
 
 ```bash
-git clone --recursive git@github.com:<you>/amnezia-client-cli-ext.git
+git clone --recursive https://github.com/mceblvn/amnezia-client-cli-ext.git
 cd amnezia-client-cli-ext
-git checkout cli-backport-4x            # the CLI product branch
 cp deploy/.cli-env.example deploy/.cli-env
 # ... fill in .cli-env, see below ...
 deploy/build_cli_package.sh [--suffix +cli.1]
+
 # → AmneziaVPN_4.8.21.0+cli.1_linux_x64.run
-sudo ./AmneziaVPN_4.8.21.0+cli.1_linux_x64.run
+./AmneziaVPN_4.8.21.0+cli.1_linux_x64.run
 ```
+
+## macOS
+
+NOTE: The previous version **must** be uninstalled via “move to bin”
+in the applications folder before using the .pkg installer.
+
+Requirements: Xcode + CLT, CMake 3.25+, Ninja, Qt 6.10.1 Desktop (clang_64)
+with qtremoteobjects qt5compat qtshadertools (via aqtinstall — Homebrew Qt is
+`arm64-only` and it fails to link).
+
+```bash
+export QT_BIN_DIR=$HOME/Qt/6.10.1/macos/bin
+"$QT_BIN_DIR/qt-cmake" -S . -B deploy/build
+cmake --build deploy/build --config release --target all
+```
+
+Premium keys come from `deploy/.cli-env` (`build_macos.sh` sources it if present)
 
 ## Secrets (Premium API)
 
-Public CI / default builds ship **without** Premium gateway keys: everything
+Amnezia Premium works on builds from the [Releases](https://github.com/mceblvn/amnezia-client-cli-ext/releases) page.
+Public CI / default builds are **without** Premium gateway keys: everything
 except Premium API calls works. For a Premium-capable build, fill
-`deploy/.cli-env` (gitignored). The script **refuses** to
+`deploy/.cli-env`. The script **refuses** to
 build Premium-capable binaries with empty keys (fail-closed), and verifies
 the baked keys in the resulting binary.
 
-Key format (critical): single line with literal `\n`, no trailing newline —
+Key format: single line with literal `\n`, no trailing newline —
 sha512 of the PEM bytes derives the proxy-payload AES key, one extra byte
 breaks all gateway crypto. Get the values from
 `amnezia-client-lite/macos-signed-build.sh` (PROD_\*/DEV_\* vars) or extract
@@ -89,9 +115,9 @@ them from an official binary with `strings`.
 
 The wrapper also appends system Qt plugin dirs after the bundled one, so
 native KDE file dialogs find their KIO workers on any distro (Arch, Debian,
-Fedora layouts probed at launch). macOS/Windows packaging untouched.
+Fedora layouts probed at launch). 
 
 ## License
 
-GNU GPL v3.0, same as upstream (see LICENSE). This fork is not affiliated
+GNU General Public License v3.0 (see LICENSE). This fork is not affiliated
 with or endorsed by the Amnezia project.
