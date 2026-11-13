@@ -56,6 +56,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 : ${SOURCE_PATH:=$(pwd)}
+
+if [ -f "$SOURCE_PATH/deploy/.cli-env" ]; then
+    # shellcheck disable=SC1091
+    source "$SOURCE_PATH/deploy/.cli-env"
+fi
+
 : ${BUILD_PATH:="$SOURCE_PATH/deploy/build"}
 : ${INSTALLERS:="${installers[@]}"}
 : ${ABIS:="${abis[@]}"}

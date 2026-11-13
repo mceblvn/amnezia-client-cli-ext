@@ -1,0 +1,24 @@
+# Build secrets for Premium gateway support. Copy to deploy/.cli-env and fill in.
+# deploy/build.sh sources the file when present; deploy/build_cli_package.sh
+# refuses to build with empty keys.
+#
+# Mirror endpoints are left empty on purpose: extract them from an official
+# AmneziaVPN binary on the build machine.
+#   strings -a <official-binary> | grep -E "lambda-list|amazonaws\.com/amnezia"
+
+# RSA-4096 gateway public keys: PEM on one line, literal \n, no trailing newline
+# (sha512 of the exact bytes derives the proxy-payload AES key).
+#   strings -a <official-binary> | grep -A13 "BEGIN PUBLIC KEY"
+PROD_AGW_PUBLIC_KEY=""
+DEV_AGW_PUBLIC_KEY=""
+
+# Storage mirrors for the proxy-bypass path: directory bases with trailing
+# slash, comma+space separated.
+PROD_S3_ENDPOINT=""
+FALLBACK_S3_ENDPOINT=""
+DEV_AGW_ENDPOINT=""
+DEV_S3_ENDPOINT=""
+
+# Optional 5.x endpoints for the free and premium v2 APIs.
+FREE_V2_ENDPOINT=""
+PREM_V1_ENDPOINT=""
