@@ -102,12 +102,22 @@ public:
                             bool skipPlatformControllerInit = false);
 
     PageController* pageController() const;
+    ConnectionController* connectionController() const { return m_connectionController; }
     void setQmlRoot();
     void checkForAppUpdates();
 
     void openConnectionByIndex(int serverIndex);
     void importConfigFromData(const QString &data);
     void updateTranslator(const QLocale &locale);
+
+    // CLI/IPC entry points. All run in the GUI thread.
+    // cliConnect(-1) uses the default server. Returns NoError when the
+    // connect was accepted (async) or already active; disconnect is a
+    // graceful no-op when already down.
+    ErrorCode cliConnect(int serverIndex = -1);
+    ErrorCode cliDisconnect();
+    QJsonObject cliStatusJson();
+    QJsonObject cliServersJson();
 
 signals:
     void translationsUpdated();
@@ -211,6 +221,9 @@ private:
     ConnectionController* m_connectionController;
     SettingsController* m_settingsController;
     LocalProxyController* m_localProxyController;
+
+    QString m_pendingSwitchTo;
+    QMetaObject::Connection m_switchConnection;
 
     ContainersModel* m_containersModel;
     ContainersModel* m_defaultServerContainersModel;

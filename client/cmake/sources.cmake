@@ -207,12 +207,15 @@ set(COMMON_FILES_H
     ${CLIENT_ROOT_DIR}/amneziaApplication.h
     ${CLIENT_ROOT_DIR}/secureQSettings.h
     ${CLIENT_ROOT_DIR}/vpnConnection.h
+    ${CLIENT_ROOT_DIR}/cli/ipcProtocol.h
+    ${CLIENT_ROOT_DIR}/cli/statusCollector.h
 )
 
 set(COMMON_FILES_CPP
     ${CLIENT_ROOT_DIR}/amneziaApplication.cpp
     ${CLIENT_ROOT_DIR}/secureQSettings.cpp
     ${CLIENT_ROOT_DIR}/vpnConnection.cpp
+    ${CLIENT_ROOT_DIR}/cli/statusCollector.cpp
 )
 
 file(GLOB_RECURSE PAGE_LOGIC_H CONFIGURE_DEPENDS ${CLIENT_ROOT_DIR}/ui/pages_logic/*.h)

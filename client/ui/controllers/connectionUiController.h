@@ -35,6 +35,12 @@ public slots:
     void openConnection();
     void closeConnection();
 
+    // Explicit, idempotent connect for programmatic callers (CLI, IPC).
+    // Unlike toggleConnection() it never disconnects an active tunnel:
+    // returns the blocking ErrorCode, emits prepareConfig() to run the
+    // normal validation path when a connect is actually needed.
+    ErrorCode connectExplicit();
+
     bool isRevokeBlockedDuringActiveConnection(const QString &serverId, int containerIndex, const QString &clientId) const;
 
     ErrorCode getLastConnectionError();

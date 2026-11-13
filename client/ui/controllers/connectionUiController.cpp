@@ -46,6 +46,27 @@ void ConnectionUiController::closeConnection()
     m_connectionController->closeConnection();
 }
 
+ErrorCode ConnectionUiController::connectExplicit()
+{
+    if (isConnected() || isConnectionInProgress()) {
+        return ErrorCode::NoError;
+    }
+
+    const QString serverId = m_serversController->getDefaultServerId();
+    if (serverId.isEmpty()) {
+        return ErrorCode::InternalError;
+    }
+
+    const ErrorCode errorCode = m_connectionController->isConnectionSupported(serverId);
+    if (errorCode != ErrorCode::NoError) {
+        notifyConnectionBlocked(errorCode);
+        return errorCode;
+    }
+
+    emit prepareConfig();
+    return ErrorCode::NoError;
+}
+
 ErrorCode ConnectionUiController::getLastConnectionError()
 {
     return m_connectionController->lastConnectionError();

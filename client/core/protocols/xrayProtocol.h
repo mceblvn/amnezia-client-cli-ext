@@ -21,6 +21,8 @@ public:
     ErrorCode start() override;
     void stop() override;
 
+    QString remoteAddress() const { return m_remoteAddress; }
+
 private:
     ErrorCode setupRouting();
     ErrorCode startTun2Socks();

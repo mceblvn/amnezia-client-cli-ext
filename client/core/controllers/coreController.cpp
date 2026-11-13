@@ -9,6 +9,8 @@
 #include "core/controllers/selfhosted/installController.h"
 #include "core/controllers/selfhosted/importController.h"
 #include "core/controllers/coreSignalHandlers.h"
+#include "cli/statusCollector.h"
+#include "core/models/api/apiV2ServerConfig.h"
 #include "logger.h"
 #include "secureQSettings.h"
 #include "core/utils/appUiConfig.h"
@@ -398,4 +400,142 @@ void CoreController::importConfigFromData(const QString &data)
     if (m_importController->extractConfigFromData(data)) {
         m_importController->importConfig();
     }
+}
+
+ErrorCode CoreController::cliConnect(int serverIndex)
+{
+    if (!m_connectionUiController || !m_serversController || !m_connectionController) {
+        return ErrorCode::InternalError;
+    }
+    QString targetId = m_serversController->getDefaultServerId();
+    if (serverIndex >= 0) {
+        targetId = m_serversUiController ? m_serversUiController->getServerId(serverIndex) : QString();
+        if (targetId.isEmpty()) {
+            return ErrorCode::InternalError;
+        }
+        m_serversController->setDefaultServer(targetId);
+    }
+    if (targetId.isEmpty()) {
+        return ErrorCode::InternalError;
+    }
+
+    bool connected = m_connectionUiController->isConnected();
+    QString currentId;
+    if (!m_vpnConnection.isNull()) {
+        QJsonObject snap;
+        QMetaObject::invokeMethod(m_vpnConnection.data(), "snapshotStatus", Qt::BlockingQueuedConnection,
+                                  Q_RETURN_ARG(QJsonObject, snap));
+        connected = snap.value(QStringLiteral("connected")).toBool(false);
+        currentId = snap.value(QStringLiteral("serverId")).toString();
+    }
+    if (connected && currentId == targetId) {
+        return ErrorCode::NoError;
+    }
+    if (m_connectionUiController->isConnectionInProgress()) {
+        return ErrorCode::NoError;
+    }
+    if (connected) {
+        // Switch to another server: drop the tunnel, continue on Disconnected.
+        if (m_switchConnection) {
+            QObject::disconnect(m_switchConnection);
+        }
+        m_pendingSwitchTo = targetId;
+        m_switchConnection = QObject::connect(
+            m_connectionController, &ConnectionController::connectionStateChanged, this,
+            [this](Vpn::ConnectionState state) {
+                if (state != Vpn::ConnectionState::Disconnected) {
+                    return;
+                }
+                if (m_pendingSwitchTo.isEmpty() || !m_connectionUiController) {
+                    m_pendingSwitchTo.clear();
+                    return;
+                }
+                m_pendingSwitchTo.clear();
+                m_connectionUiController->connectExplicit();
+            });
+        m_connectionUiController->closeConnection();
+        return ErrorCode::NoError;
+    }
+    return m_connectionUiController->connectExplicit();
+}
+
+ErrorCode CoreController::cliDisconnect()
+{
+    if (m_switchConnection) {
+        QObject::disconnect(m_switchConnection);
+    }
+    m_pendingSwitchTo.clear();
+    if (!m_connectionUiController) {
+        return ErrorCode::InternalError;
+    }
+    if (!m_connectionUiController->isConnected() && !m_connectionUiController->isConnectionInProgress()) {
+        return ErrorCode::NoError;
+    }
+    m_connectionUiController->closeConnection();
+    return ErrorCode::NoError;
+}
+
+QJsonObject CoreController::cliStatusJson()
+{
+    if (!m_serversController || !m_connectionUiController || m_vpnConnection.isNull()) {
+        QJsonObject data;
+        data.insert(QStringLiteral("connected"), false);
+        data.insert(QStringLiteral("connectionState"), QStringLiteral("Unknown"));
+        return data;
+    }
+    return amnezia::cli::collectStatus(m_serversController, m_connectionUiController, m_vpnConnection.data());
+}
+
+QJsonObject CoreController::cliServersJson()
+{
+    QJsonArray list;
+    if (m_serversController && m_serversUiController) {
+        const QString defaultId = m_serversController->getDefaultServerId();
+        QString currentId;
+        if (!m_vpnConnection.isNull()) {
+            QJsonObject snap;
+            QMetaObject::invokeMethod(m_vpnConnection.data(), "snapshotStatus", Qt::BlockingQueuedConnection,
+                                      Q_RETURN_ARG(QJsonObject, snap));
+            if (snap.value(QStringLiteral("connected")).toBool(false)) {
+                currentId = snap.value(QStringLiteral("serverId")).toString();
+            }
+        }
+        const int count = m_serversUiController->getServersCount();
+        for (int i = 0; i < count; ++i) {
+            const QString id = m_serversUiController->getServerId(i);
+            if (id.isEmpty()) {
+                continue;
+            }
+            QJsonObject e;
+            e.insert(QStringLiteral("index"), i);
+            e.insert(QStringLiteral("name"), m_serversController->notificationDisplayName(id));
+            const DockerContainer container = m_serversController->getDefaultContainer(id);
+            const amnezia::cli::ServerDisplay display = amnezia::cli::serverDisplay(
+                container, m_serversController->getServerContainersMap(id).value(container));
+            e.insert(QStringLiteral("protocol"), display.protocol);
+            e.insert(QStringLiteral("protoShort"), display.protoShort);
+            if (display.outdated) {
+                e.insert(QStringLiteral("outdated"), true);
+            }
+            if (id == defaultId) {
+                e.insert(QStringLiteral("default"), true);
+            }
+            if (!currentId.isEmpty() && id == currentId) {
+                e.insert(QStringLiteral("current"), true);
+            }
+            if (const auto api = m_serversController->apiV2Config(id); api.has_value()) {
+                const QString country = !api->apiConfig.serverCountryName.isEmpty()
+                    ? api->apiConfig.serverCountryName
+                    : api->apiConfig.serverCountryCode;
+                if (!country.isEmpty()) {
+                    e.insert(QStringLiteral("country"), country);
+                }
+                e.insert(QStringLiteral("countriesAvailable"), api->apiConfig.availableCountries.size());
+            }
+            list.append(e);
+        }
+    }
+    QJsonObject data;
+    data.insert(QStringLiteral("servers"), list);
+    return data;
 }
