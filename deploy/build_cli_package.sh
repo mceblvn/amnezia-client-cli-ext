@@ -13,6 +13,7 @@ build_args=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --suffix) SUFFIX="$2"; shift 2 ;;
+        -b|--build) BUILD_DIR="$2"; build_args+=("$1" "$2"); shift 2 ;;
         *) build_args+=("$1"); shift ;;
     esac
 done
